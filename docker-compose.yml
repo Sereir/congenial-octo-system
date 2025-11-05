@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # MongoDB Database (LOCAL) - Commenté car on utilise MongoDB Atlas
+  # Décommentez ce service si vous voulez utiliser MongoDB local au lieu d'Atlas
+  # mongodb:
+  #   image: mongo:7.0
+  #   container_name: ubereats-mongodb
+  #   restart: always
+  #   environment:
+  #     MONGO_INITDB_ROOT_USERNAME: admin
+  #     MONGO_INITDB_ROOT_PASSWORD: admin123
+  #     MONGO_INITDB_DATABASE: ubereats
+  #   ports:
+  #     - "27017:27017"
+  #   volumes:
+  #     - mongodb_data:/data/db
+  #     - ./backend/init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js:ro
+  #   networks:
+  #     - ubereats-network
+
+  # Backend API
+  backend:
+    build: ./backend
+    container_name: ubereats-backend
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 5001
+      # Option 1 : MongoDB local (dans Docker)
+      # MONGODB_URI: mongodb://admin:admin123@mongodb:27017/ubereats?authSource=admin
+      
+      # Option 2 : MongoDB Atlas (cloud) - DÉCOMMENTEZ CETTE LIGNE ET COMMENTEZ LA LIGNE DU DESSUS
+      MONGODB_URI: mongodb+srv://db_user:MLXkag3PVEjc34Gu@cluster0.m3bmapi.mongodb.net/
+      
+      JWT_SECRET: your-super-secret-jwt-key-change-this-in-production
+    ports:
+      - "5001:5001"
+    # depends_on:
+    #   - mongodb  # Décommentez si vous utilisez MongoDB local
+    networks:
+      - ubereats-network
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  # Frontend
+  frontend:
+    build: ./vuetify-project
+    container_name: ubereats-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - ubereats-network
+    environment:
+      VITE_API_URL: http://localhost:5001/api
+
+networks:
+  ubereats-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+    driver: local

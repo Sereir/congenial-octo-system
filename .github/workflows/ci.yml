@@ -1,0 +1,219 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # Job 1 - Lint
+  lint:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            vuetify-project/package-lock.json
+
+      - name: Install backend dependencies
+        if: matrix.component == 'backend'
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Install frontend dependencies
+        if: matrix.component == 'frontend'
+        working-directory: ./vuetify-project
+        run: npm ci
+
+      - name: Run ESLint (Backend)
+        if: matrix.component == 'backend'
+        working-directory: ./backend
+        run: npm run lint
+
+      - name: Run ESLint (Frontend)
+        if: matrix.component == 'frontend'
+        working-directory: ./vuetify-project
+        run: npm run lint
+
+  # Job 2 - Tests Backend
+  test-backend:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    services:
+      mongodb:
+        image: mongo:6
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      MONGODB_URI: ${{ secrets.MONGODB_URI_TEST }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      PORT: 5001
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Run tests with coverage
+        working-directory: ./backend
+        run: npm run test -- --coverage
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+          retention-days: 30
+
+  # Job 3 - Tests Frontend
+  test-frontend:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    env:
+      VITE_API_URL: ${{ secrets.VITE_API_URL }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: vuetify-project/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./vuetify-project
+        run: npm ci
+
+      - name: Run tests
+        working-directory: ./vuetify-project
+        run: npm test
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-coverage
+          path: vuetify-project/coverage/
+          retention-days: 30
+
+  # Job 4 - Build Frontend
+  build:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+    env:
+      VITE_API_URL: ${{ secrets.VITE_API_URL }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: vuetify-project/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./vuetify-project
+        run: npm ci
+
+      - name: Build application
+        working-directory: ./vuetify-project
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: vuetify-project/dist/
+          retention-days: 30
+
+  # Job 5 - Security Audit (parallèle, non-bloquant)
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Run npm audit (Backend)
+        if: matrix.component == 'backend'
+        working-directory: ./backend
+        run: npm audit --audit-level=moderate || true
+
+      - name: Run npm audit (Frontend)
+        if: matrix.component == 'frontend'
+        working-directory: ./vuetify-project
+        run: npm audit --audit-level=moderate || true
+
+  # Job de notification en cas d'échec
+  notify-failure:
+    name: Notify Failure
+    runs-on: ubuntu-latest
+    needs: [lint, test-backend, test-frontend, build]
+    if: failure()
+    steps:
+      - name: Failure Notification
+        run: |
+          echo "::error::❌ CI Pipeline Failed!"
+          echo "::notice::Branch: ${{ github.ref_name }}"
+          echo "::notice::Commit: ${{ github.sha }}"
+          echo "::notice::Actor: ${{ github.actor }}"
+          echo "::notice::Workflow: ${{ github.workflow }}"
+          echo "::notice::Run ID: ${{ github.run_id }}"
+          echo "::notice::View logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  # Job de notification en cas de succès
+  notify-success:
+    name: Notify Success
+    runs-on: ubuntu-latest
+    needs: [lint, test-backend, test-frontend, build]
+    if: success()
+    steps:
+      - name: Success Notification
+        run: |
+          echo "::notice::✅ CI Pipeline Succeeded!"
+          echo "::notice::Branch: ${{ github.ref_name }}"
+          echo "::notice::Commit: ${{ github.sha }}"
+          echo "::notice::All checks passed successfully!"

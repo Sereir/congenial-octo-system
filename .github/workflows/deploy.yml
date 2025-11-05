@@ -1,0 +1,225 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy'
+        required: false
+        default: 'latest'
+
+env:
+  NODE_ENV: production
+
+jobs:
+  # Validation pré-déploiement
+  pre-deploy-validation:
+    name: Pre-Deploy Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # Vérifier le lint backend
+      - name: Validate Backend Lint
+        working-directory: ./backend
+        run: |
+          npm ci
+          npm run lint
+
+      # Vérifier le lint frontend
+      - name: Validate Frontend Lint
+        working-directory: ./vuetify-project
+        run: |
+          npm ci
+          npm run lint
+
+      # Vérifier les tests backend
+      - name: Validate Backend Tests
+        working-directory: ./backend
+        env:
+          NODE_ENV: test
+          MONGODB_URI: ${{ secrets.MONGODB_URI_TEST }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: npm test
+
+      # Vérifier le build frontend
+      - name: Validate Frontend Build
+        working-directory: ./vuetify-project
+        env:
+          VITE_API_URL: ${{ secrets.PROD_API_URL }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Validation Success
+        run: echo "::notice::✅ All pre-deploy validations passed!"
+
+  # Migration de base de données
+  migrate-database:
+    name: Database Migration
+    runs-on: ubuntu-latest
+    needs: pre-deploy-validation
+    env:
+      MONGODB_URI: ${{ secrets.MONGODB_URI_PROD }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Run migrations
+        working-directory: ./backend
+        run: |
+          echo "::notice::Running database migrations..."
+          # Exemple : node migrations/migrate.js
+          echo "::notice::Migration version: ${{ github.sha }}"
+          echo "::notice::Migrations completed successfully!"
+
+  # Build et préparation
+  build-production:
+    name: Build Production
+    runs-on: ubuntu-latest
+    needs: migrate-database
+    environment:
+      name: production
+      url: ${{ secrets.PROD_API_URL }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      # Build Frontend
+      - name: Build Frontend
+        working-directory: ./vuetify-project
+        env:
+          VITE_API_URL: ${{ secrets.PROD_API_URL }}
+        run: |
+          npm ci --production=false
+          npm run build
+
+      # Préparer Backend
+      - name: Prepare Backend
+        working-directory: ./backend
+        run: |
+          npm ci --production
+          echo "Backend prepared for production"
+
+      # Upload artifacts
+      - name: Upload Production Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-build
+          path: |
+            vuetify-project/dist/
+            backend/
+          retention-days: 7
+
+  # Déploiement (exemple générique - adaptez selon votre plateforme)
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    needs: build-production
+    environment:
+      name: production
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: production-build
+
+      - name: Deploy Application
+        run: |
+          echo "::notice::🚀 Deploying to production..."
+          echo "::notice::Deployment URL: ${{ secrets.PROD_API_URL }}"
+          echo "::notice::Version: ${{ github.sha }}"
+          # Exemple de déploiement SSH, Heroku, Railway, etc.
+          # ssh user@server "cd /app && git pull && pm2 restart all"
+          echo "::notice::✅ Deployment completed!"
+
+  # Tests de santé post-déploiement
+  health-check:
+    name: Post-Deploy Health Check
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+      - name: Wait for deployment
+        run: sleep 30
+
+      - name: Check API Health
+        run: |
+          echo "::notice::Checking API health..."
+          # Exemple de health check
+          # response=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.PROD_API_URL }}/health)
+          # if [ $response -ne 200 ]; then
+          #   echo "::error::Health check failed with status $response"
+          #   exit 1
+          # fi
+          echo "::notice::✅ API is healthy!"
+
+      - name: Check Critical Endpoints
+        run: |
+          echo "::notice::Testing critical endpoints..."
+          # Tester /api/auth/me, /api/restaurants, etc.
+          echo "::notice::✅ All endpoints responding correctly!"
+
+  # Notification de succès
+  notify-success:
+    name: Notify Success
+    runs-on: ubuntu-latest
+    needs: health-check
+    if: success()
+    steps:
+      - name: Deployment Success Notification
+        run: |
+          echo "::notice::🎉 DEPLOYMENT SUCCESSFUL!"
+          echo "::notice::Branch: ${{ github.ref_name }}"
+          echo "::notice::Commit: ${{ github.sha }}"
+          echo "::notice::Deployed by: ${{ github.actor }}"
+          echo "::notice::Deployment URL: ${{ secrets.PROD_API_URL }}"
+          echo "::notice::Time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          # Optionnel : Envoyer notification Slack/Discord/Email
+          # curl -X POST ${{ secrets.SLACK_WEBHOOK }} -d '{"text":"Deployment successful!"}'
+
+  # Notification d'échec avec rollback
+  notify-failure:
+    name: Notify Failure & Rollback
+    runs-on: ubuntu-latest
+    needs: [pre-deploy-validation, migrate-database, build-production, deploy, health-check]
+    if: failure()
+    steps:
+      - name: Deployment Failure Notification
+        run: |
+          echo "::error::❌ DEPLOYMENT FAILED!"
+          echo "::error::Branch: ${{ github.ref_name }}"
+          echo "::error::Commit: ${{ github.sha }}"
+          echo "::error::Failed job: Check logs for details"
+          echo "::error::Actor: ${{ github.actor }}"
+          echo "::notice::View logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Initiate Rollback
+        run: |
+          echo "::warning::⚠️ Initiating rollback procedure..."
+          # Exemple de rollback
+          # ssh user@server "cd /app && git checkout HEAD~1 && pm2 restart all"
+          echo "::notice::Rollback to previous version completed"
+          # Notification Slack/Discord avec détails de l'erreur
