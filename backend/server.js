@@ -7,9 +7,14 @@ import productRoutes from './routes/productRoutes.js';
 import cartRoutes from './routes/cartRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import userRoutes from './routes/userRoutes.js';
+import testRoutes from './routes/testRoutes.js';
 
-// Load environment variables
+// Load environment variables FIRST
 dotenv.config();
+
+// Initialize Sentry BEFORE creating Express app
+import { initSentry, Sentry } from './config/sentry.js';
+initSentry();
 
 // Initialize Express app
 const app = express();
@@ -22,17 +27,26 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Sentry request handler - MUST be first middleware
+app.use(Sentry.Handlers.requestHandler());
+// Sentry tracing handler
+app.use(Sentry.Handlers.tracingHandler());
+
 // Routes
 app.use('/api/restaurants', restaurantRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/test', testRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });
 });
+
+// Sentry error handler - MUST be before other error handlers
+app.use(Sentry.Handlers.errorHandler());
 
 // Error handling middleware
 app.use((err, req, res, _next) => {
