@@ -22,10 +22,20 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: |
-            backend/package-lock.json
-            vuetify-project/package-lock.json
+
+      - name: Cache backend dependencies
+        if: matrix.component == 'backend'
+        uses: actions/cache@v3
+        with:
+          path: backend/node_modules
+          key: ${{ runner.os }}-backend-${{ hashFiles('backend/package-lock.json') }}
+
+      - name: Cache frontend dependencies
+        if: matrix.component == 'frontend'
+        uses: actions/cache@v3
+        with:
+          path: vuetify-project/node_modules
+          key: ${{ runner.os }}-frontend-${{ hashFiles('vuetify-project/package-lock.json') }}
 
       - name: Install backend dependencies
         if: matrix.component == 'backend'
@@ -75,8 +85,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: backend/node_modules
+          key: ${{ runner.os }}-backend-${{ hashFiles('backend/package-lock.json') }}
 
       - name: Install dependencies
         working-directory: ./backend
@@ -108,8 +122,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: vuetify-project/package-lock.json
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: vuetify-project/node_modules
+          key: ${{ runner.os }}-frontend-${{ hashFiles('vuetify-project/package-lock.json') }}
 
       - name: Install dependencies
         working-directory: ./vuetify-project
@@ -142,8 +160,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: vuetify-project/package-lock.json
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: vuetify-project/node_modules
+          key: ${{ runner.os }}-frontend-${{ hashFiles('vuetify-project/package-lock.json') }}
 
       - name: Install dependencies
         working-directory: ./vuetify-project
