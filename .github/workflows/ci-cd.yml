@@ -158,12 +158,12 @@ jobs:
           path: vuetify-project/dist
           retention-days: 7
 
-  # Job 6: Build Docker Images
+  # Job 6: Build Docker Images (optionnel - nécessite DOCKER_USERNAME et DOCKER_PASSWORD)
   build-docker:
     name: 🐳 Build Docker Images
     runs-on: ubuntu-latest
     needs: [test-backend, build-frontend]
-    if: github.ref == 'refs/heads/main'
+    if: false  # Désactivé - activer en configurant DOCKER_USERNAME et DOCKER_PASSWORD
     
     steps:
       - name: Checkout code
@@ -196,12 +196,12 @@ jobs:
           cache-from: type=registry,ref=${{ secrets.DOCKER_USERNAME }}/ubereats-frontend:latest
           cache-to: type=inline
 
-  # Job 7: Deploy to Production
+  # Job 7: Deploy to Production (optionnel - nécessite secrets serveur)
   deploy:
     name: 🚀 Deploy to Production
     runs-on: ubuntu-latest
-    needs: [build-docker]
-    if: github.ref == 'refs/heads/main'
+    needs: [build-frontend]
+    if: false  # Désactivé - activer en configurant SERVER_HOST, SERVER_USERNAME, SSH_PRIVATE_KEY
     environment:
       name: production
       url: https://ubereats.example.com
