@@ -7,7 +7,7 @@ on:
     branches: [main, develop]
 
 jobs:
-  # Job 1 - Lint
+  # Job 1 & 2 : Lint (Matrice)
   lint:
     name: Code Quality Check
     runs-on: ubuntu-latest
@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node.js 18
         uses: actions/setup-node@v4
@@ -80,6 +82,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node.js 18
         uses: actions/setup-node@v4
@@ -117,6 +121,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node.js 18
         uses: actions/setup-node@v4
@@ -155,6 +161,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node.js 18
         uses: actions/setup-node@v4
@@ -193,6 +201,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Setup Node.js 18
         uses: actions/setup-node@v4
